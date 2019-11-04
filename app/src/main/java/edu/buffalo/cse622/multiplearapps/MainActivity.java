@@ -45,9 +45,13 @@ import dalvik.system.PathClassLoader;
 public class MainActivity extends AppCompatActivity {
 
     Context context = null;
-    // Map with {Key:Value} pair as {PluginName:HashMap of class instances}. Inner map with {Key:Value} pair as {ClassName:Object array of size 2: [Class, Class instance]}
+    // Map with {Key:Value} pair as {PluginName:HashMap of class instances}.
+    // Inner map with {Key:Value} pair as {ClassName:Object array of size 2 - [Class, Object instance of class]}
     Map<String, HashMap<String, Object[]>> pluginMap = new HashMap();
     private ArFragment arFragment;
+
+    // To control the refresh rate of frame
+    private long frameTimestamp = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -125,7 +129,6 @@ public class MainActivity extends AppCompatActivity {
         if (requestCode == 102 && resultCode == RESULT_OK) {
             Uri selectedFile = data.getData(); //The uri with the location of the file
 
-
             try {
                 // Get file name and file InputStream
                 Cursor returnCursor =
@@ -173,8 +176,12 @@ public class MainActivity extends AppCompatActivity {
     private void onFrameUpdate(FrameTime unusedframeTime) {
 
         Frame frame = arFragment.getArSceneView().getArFrame();
+        // Frame refresh rate 5 seconds
+        if (frame == null || ((frame.getTimestamp() - frameTimestamp) / 1000000000) < 5) {
+            return;
+        }
 
-        // Invoke processFrame on all plugins.
+        // Invoke processFrame() on all plugins
         for (Map.Entry<String, HashMap<String, Object[]>> entry : pluginMap.entrySet()) {
             Object[] instanceClassAndObject = entry.getValue().get("FrameOperations");
             Class<?> dynamicClass = (Class<?>) instanceClassAndObject[0];
@@ -194,6 +201,8 @@ public class MainActivity extends AppCompatActivity {
             } catch (IllegalAccessException e) {
                 e.printStackTrace();
             }
+
+            frameTimestamp = frame.getTimestamp();
         }
 
     }
