@@ -2,38 +2,26 @@ package edu.buffalo.cse622.multiplearapps;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
-import androidx.core.app.ActivityCompat;
-import androidx.core.content.ContextCompat;
 
-import android.Manifest;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
-import android.content.res.AssetManager;
-import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.net.Uri;
-import android.os.Build;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
-import android.util.DisplayMetrics;
 import android.view.Menu;
 import android.view.MenuItem;
 
 import com.google.ar.core.Frame;
+import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.sceneform.AnchorNode;
 import com.google.ar.sceneform.FrameTime;
 import com.google.ar.sceneform.ux.ArFragment;
 
-import java.io.BufferedInputStream;
-import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
-import java.io.IOException;
 import java.io.InputStream;
-import java.io.OutputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
@@ -58,8 +46,6 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        requestAppPermissions();
-
         Toolbar mainToolbar = findViewById(R.id.main_toolbar);
         setSupportActionBar(mainToolbar);
         context = this;
@@ -70,30 +56,34 @@ public class MainActivity extends AppCompatActivity {
         arFragment.getArSceneView().getScene().addOnUpdateListener(this::onFrameUpdate);
 
         pluginMap = new HashMap<>();
+
+        //requestAppPermissions();
     }
 
-    private void requestAppPermissions() {
-        if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-            return;
+    @Override
+    protected void onPause(){
+        super.onPause();
+        if (arFragment.getArSceneView().getSession() != null) {
+            arFragment.getArSceneView().getSession().pause();
         }
+    }
 
-        if (hasReadPermissions() && hasWritePermissions()) {
-            return;
+    @Override
+    protected void onResume(){
+        super.onResume();
+        try {
+            if (arFragment.getArSceneView().getSession() != null) {
+                arFragment.getArSceneView().getSession().resume();
+            }
+        } catch (CameraNotAvailableException e) {
+            e.printStackTrace();
         }
-
-        ActivityCompat.requestPermissions(this,
-                new String[]{
-                        Manifest.permission.READ_EXTERNAL_STORAGE,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE
-                }, 101);
     }
 
-    private boolean hasReadPermissions() {
-        return (ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
-    }
+    @Override
+    protected void onDestroy(){
+        super.onDestroy();
 
-    private boolean hasWritePermissions() {
-        return (ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
     }
 
     @Override
@@ -115,7 +105,7 @@ public class MainActivity extends AppCompatActivity {
             intent.addCategory(Intent.CATEGORY_OPENABLE);
             intent.setType("*/*");
 
-            startActivityForResult(Intent.createChooser(intent, "Choose apk to import"), 102);
+            startActivityForResult(Intent.createChooser(intent, "Choose APK file to import"), 102);
         }
 
         return super.onOptionsItemSelected(item);
@@ -138,14 +128,14 @@ public class MainActivity extends AppCompatActivity {
                 String pluginName = returnCursor.getString(nameIndex);
                 InputStream apkInputStream = getContentResolver().openInputStream(selectedFile);
 
-                File targetApk = loadApk(apkInputStream);
-                Resources dynamicResources = loadResources(targetApk);
+                File targetApk = DynamicLoadingUtils.loadApk(context, apkInputStream);
+                Resources dynamicResources = DynamicLoadingUtils.loadResources(context, targetApk);
 
                 PathClassLoader loader = new PathClassLoader(
                         targetApk.getAbsolutePath(), getClassLoader());
                 Class<?> dynamicClass = loader.loadClass("edu.buffalo.cse622.pottedplantplugin.FrameOperations");
-                Constructor<?> ctor = dynamicClass.getConstructor(Resources.class, Context.class);
-                Object dynamicInstance = ctor.newInstance(dynamicResources, context);
+                Constructor<?> ctor = dynamicClass.getConstructor(Context.class, Resources.class);
+                Object dynamicInstance = ctor.newInstance(context, dynamicResources);
 
                 // Add the class instances to pluginMap
                 if (pluginMap.containsKey(pluginName)) {
@@ -207,79 +197,48 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    /**
-     * This method loads the apk using the file's InputStream.
-     *
-     * @param apkInputStream
-     * @return
-     */
-    File loadApk(InputStream apkInputStream) {
-        File targetApk = new File(getDir("dex", Context.MODE_PRIVATE), "app.apk");
-
-        if (!targetApk.exists() || !targetApk.isFile()) {
-            try (BufferedInputStream bis = new BufferedInputStream(apkInputStream);
-                 OutputStream dexWriter = new BufferedOutputStream(
-                         new FileOutputStream(targetApk))) {
-
-                byte[] buf = new byte[4096];
-                int len;
-                while ((len = bis.read(buf, 0, 4096)) > 0) {
-                    dexWriter.write(buf, 0, len);
-                }
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+    /*
+    private void requestAppPermissions() {
+        if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+            return;
         }
 
-        return targetApk;
-    }
-
-    /**
-     * Initialize the dynamicResources object that is used for loading all the plugin resources.
-     *
-     * @param targetApk
-     * @return
-     */
-    Resources loadResources(File targetApk) {
-        Resources dynamicResources = null;
-
-        PathClassLoader loader = new PathClassLoader(
-                targetApk.getAbsolutePath(), getClassLoader());
-        try {
-            AssetManager assets = AssetManager.class.newInstance();
-            Method addAssetPath = AssetManager.class
-                    .getMethod("addAssetPath", String.class);
-            if (addAssetPath.invoke(assets, targetApk.getAbsolutePath()) ==
-                    Integer.valueOf(0)) {
-                throw new RuntimeException();
-            }
-
-            Class<?> resourcesImpl = Class.forName("android.content.res.ResourcesImpl");
-            Class<?> daj = Class.forName("android.view.DisplayAdjustments");
-            Object impl = resourcesImpl
-                    .getConstructor(AssetManager.class, DisplayMetrics.class,
-                            Configuration.class, daj)
-                    .newInstance(assets, getResources().getDisplayMetrics(),
-                            getResources().getConfiguration(), daj.newInstance());
-
-            dynamicResources = Resources.class.getConstructor(ClassLoader.class)
-                    .newInstance(loader);
-            Method setImpl = Resources.class.getMethod("setImpl",
-                    Class.forName("android.content.res.ResourcesImpl"));
-            setImpl.invoke(dynamicResources, impl);
-        } catch (InstantiationException e) {
-            e.printStackTrace();
-        } catch (InvocationTargetException e) {
-            e.printStackTrace();
-        } catch (NoSuchMethodException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
-            e.printStackTrace();
-        } catch (ClassNotFoundException e) {
-            e.printStackTrace();
+        if (hasWritePermissions() && hasReadPermissions() && hasCameraPermission()) {
+            return;
         }
 
-        return dynamicResources;
+        ActivityCompat.requestPermissions(this,
+                new String[]{
+                        Manifest.permission.WRITE_EXTERNAL_STORAGE,
+                        Manifest.permission.READ_EXTERNAL_STORAGE,
+                        Manifest.permission.CAMERA
+                }, 101);
     }
+
+    private boolean hasReadPermissions() {
+        return (ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
+    }
+
+    private boolean hasWritePermissions() {
+        return (ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
+    }
+
+    public boolean hasCameraPermission() {
+        return ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.CAMERA)
+                == PackageManager.PERMISSION_GRANTED;
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
+        if (requestCode == 101) {
+            if (grantResults.length > 0 && permissions.length==grantResults.length) {
+                Log.d("Permissions", "Camera and storage permissions granted.");
+            }
+            else {
+                Toast.makeText(this, "Camera and storage permissions not granted!", Toast.LENGTH_LONG);
+            }
+        }
+    }
+    */
 
 }
