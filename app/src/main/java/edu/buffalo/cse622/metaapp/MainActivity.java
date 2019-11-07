@@ -1,4 +1,4 @@
-package edu.buffalo.cse622.multiplearapps;
+package edu.buffalo.cse622.metaapp;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
@@ -37,9 +37,6 @@ public class MainActivity extends AppCompatActivity {
     // Inner map with {Key:Value} pair as {ClassName:Object array of size 2 - [Class, Object instance of class]}
     Map<String, HashMap<String, Object[]>> pluginMap = new HashMap();
     private ArFragment arFragment;
-
-    // To control the refresh rate of frame
-    private long frameTimestamp = 0;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -111,7 +108,6 @@ public class MainActivity extends AppCompatActivity {
         return super.onOptionsItemSelected(item);
     }
 
-
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
@@ -133,7 +129,7 @@ public class MainActivity extends AppCompatActivity {
 
                 PathClassLoader loader = new PathClassLoader(
                         targetApk.getAbsolutePath(), getClassLoader());
-                Class<?> dynamicClass = loader.loadClass("edu.buffalo.cse622.pottedplantplugin.FrameOperations");
+                Class<?> dynamicClass = loader.loadClass("edu.buffalo.cse622.plugins.FrameOperations");
                 Constructor<?> ctor = dynamicClass.getConstructor(Context.class, Resources.class);
                 Object dynamicInstance = ctor.newInstance(context, dynamicResources);
 
@@ -166,8 +162,8 @@ public class MainActivity extends AppCompatActivity {
     private void onFrameUpdate(FrameTime unusedframeTime) {
 
         Frame frame = arFragment.getArSceneView().getArFrame();
-        // Frame refresh rate 5 seconds
-        if (frame == null || ((frame.getTimestamp() - frameTimestamp) / 1000000000) < 5) {
+
+        if (frame == null) {
             return;
         }
 
@@ -192,7 +188,6 @@ public class MainActivity extends AppCompatActivity {
                 e.printStackTrace();
             }
 
-            frameTimestamp = frame.getTimestamp();
         }
 
     }

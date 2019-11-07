@@ -1,4 +1,4 @@
-package edu.buffalo.cse622.multiplearapps;
+package edu.buffalo.cse622.metaapp;
 
 import org.junit.Test;
 

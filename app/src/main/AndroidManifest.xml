@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="edu.buffalo.cse622.multiplearapps">
+    package="edu.buffalo.cse622.metaapp">
 
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />    <!-- maxSdkVersion="29" required for Android 10 -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
@@ -17,7 +17,7 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.NoActionBar">
         <meta-data android:name="com.google.ar.core" android:value="required" />
-        <activity android:name=".MainActivity">
+        <activity android:name="edu.buffalo.cse622.metaapp.MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

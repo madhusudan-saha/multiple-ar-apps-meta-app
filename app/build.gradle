@@ -3,7 +3,7 @@ apply plugin: 'com.android.application'
 android {
     compileSdkVersion 28
     defaultConfig {
-        applicationId "edu.buffalo.cse622.multiplearapps"
+        applicationId "edu.buffalo.cse622.metaapp"
         minSdkVersion 24
         targetSdkVersion 28
         versionCode 1

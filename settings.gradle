@@ -1,1 +1,1 @@
-include ':app', ':pottedplant'
+include ':app'
