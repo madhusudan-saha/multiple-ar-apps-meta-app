@@ -1,4 +1,5 @@
 <resources>
-    <string name="app_name">MultipleARApps</string>
+    <string name="app_name">Multiple AR Apps</string>
     <string name="import_ar_app">Import AR Plugin</string>
+    <string name="activate_input_for_plugin">Activate input for plugin</string>
 </resources>

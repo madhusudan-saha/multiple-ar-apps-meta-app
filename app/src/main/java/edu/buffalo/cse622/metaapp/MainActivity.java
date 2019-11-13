@@ -1,19 +1,32 @@
 package edu.buffalo.cse622.metaapp;
 
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.widget.Toolbar;
 
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.database.Cursor;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
+import android.util.Log;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
+import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewGroup;
+import android.widget.LinearLayout;
+import android.widget.RadioButton;
+import android.widget.RadioGroup;
+import android.widget.Toast;
 
 import com.google.ar.core.Frame;
+import com.google.ar.core.HitResult;
+import com.google.ar.core.Plane;
 import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.sceneform.AnchorNode;
 import com.google.ar.sceneform.FrameTime;
@@ -36,7 +49,8 @@ public class MainActivity extends AppCompatActivity {
     // Map with {Key:Value} pair as {PluginName:HashMap of class instances}.
     // Inner map with {Key:Value} pair as {ClassName:Object array of size 2 - [Class, Object instance of class]}
     Map<String, HashMap<String, Object[]>> pluginMap = new HashMap();
-    private ArFragment arFragment;
+    ArFragment arFragment;
+    String activePlugin;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,6 +65,8 @@ public class MainActivity extends AppCompatActivity {
 
         // Add a frame update listener to the scene to control the state of the buttons.
         arFragment.getArSceneView().getScene().addOnUpdateListener(this::onFrameUpdate);
+        // Add a listener to user taps.
+        arFragment.setOnTapArPlaneListener(this::onPlaneTap);
 
         pluginMap = new HashMap<>();
 
@@ -60,27 +76,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause(){
         super.onPause();
-        if (arFragment.getArSceneView().getSession() != null) {
-            arFragment.getArSceneView().getSession().pause();
-        }
     }
 
     @Override
     protected void onResume(){
         super.onResume();
-        try {
-            if (arFragment.getArSceneView().getSession() != null) {
-                arFragment.getArSceneView().getSession().resume();
-            }
-        } catch (CameraNotAvailableException e) {
-            e.printStackTrace();
-        }
     }
 
     @Override
     protected void onDestroy(){
         super.onDestroy();
-
     }
 
     @Override
@@ -97,12 +102,55 @@ public class MainActivity extends AppCompatActivity {
         // as you specify a parent activity in AndroidManifest.xml.
         int id = item.getItemId();
 
-        if (id == R.id.import_app) {
-            Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
+        switch (id) {
+            case R.id.import_app:
+                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+                intent.addCategory(Intent.CATEGORY_OPENABLE);
+                intent.setType("*/*");
 
-            startActivityForResult(Intent.createChooser(intent, "Choose APK file to import"), 102);
+                startActivityForResult(Intent.createChooser(intent, "Choose APK file to import"), 102);
+
+                break;
+
+            case R.id.activate_plugin_input:
+                // Creates a popup with the list of loaded plugins
+                AlertDialog.Builder builder = new AlertDialog.Builder(this);
+                builder.setTitle("Activate input for plugin:");
+
+                View viewInflated = LayoutInflater.from(context).inflate(R.layout.activate_plugin_input, (ViewGroup) findViewById(android.R.id.content), false);
+                final RadioGroup pluginsGroup = viewInflated.findViewById(R.id.pluginsGroup);
+
+                for (String pluginName : pluginMap.keySet()) {
+                    RadioButton radioButton = new RadioButton(this);
+                    radioButton.setId(View.generateViewId());
+                    radioButton.setText(pluginName);
+                    pluginsGroup.addView(radioButton);
+                }
+
+                builder.setView(viewInflated);
+
+                builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        int radioButtonID = pluginsGroup.getCheckedRadioButtonId();
+                        View radioButtonView = pluginsGroup.findViewById(radioButtonID);
+                        int selectedIndex = pluginsGroup.indexOfChild(radioButtonView);
+
+                        RadioButton radioButton = (RadioButton) pluginsGroup.getChildAt(selectedIndex);
+                        activePlugin = radioButton.getText().toString();
+                    }
+                });
+
+                builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        dialog.cancel();
+                    }
+                });
+
+                builder.show();
+
+                break;
         }
 
         return super.onOptionsItemSelected(item);
@@ -192,48 +240,31 @@ public class MainActivity extends AppCompatActivity {
 
     }
 
-    /*
-    private void requestAppPermissions() {
-        if (android.os.Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
+    private void onPlaneTap(HitResult hitResult, Plane plane, MotionEvent motionEvent) {
+        if (activePlugin == null) {
+            Toast.makeText(context, "Activate input for a plugin first!", Toast.LENGTH_LONG).show();
+
             return;
         }
 
-        if (hasWritePermissions() && hasReadPermissions() && hasCameraPermission()) {
-            return;
-        }
+        Object[] instanceClassAndObject = pluginMap.get(activePlugin).get("FrameOperations");
+        Class<?> dynamicClass = (Class<?>) instanceClassAndObject[0];
+        Object dynamicInstance = instanceClassAndObject[1];
 
-        ActivityCompat.requestPermissions(this,
-                new String[]{
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE,
-                        Manifest.permission.READ_EXTERNAL_STORAGE,
-                        Manifest.permission.CAMERA
-                }, 101);
-    }
-
-    private boolean hasReadPermissions() {
-        return (ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
-    }
-
-    private boolean hasWritePermissions() {
-        return (ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.WRITE_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED);
-    }
-
-    public boolean hasCameraPermission() {
-        return ContextCompat.checkSelfPermission(getBaseContext(), Manifest.permission.CAMERA)
-                == PackageManager.PERMISSION_GRANTED;
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String permissions[], int[] grantResults) {
-        if (requestCode == 101) {
-            if (grantResults.length > 0 && permissions.length==grantResults.length) {
-                Log.d("Permissions", "Camera and storage permissions granted.");
+        try {
+            Method planeTap = dynamicClass.getDeclaredMethod("planeTap", HitResult.class);
+            planeTap.setAccessible(true);  // To invoke protected or private methods
+            AnchorNode anchorNode = (AnchorNode) planeTap.invoke(dynamicInstance, hitResult);
+            if (anchorNode != null) {
+                anchorNode.setParent(arFragment.getArSceneView().getScene());
             }
-            else {
-                Toast.makeText(this, "Camera and storage permissions not granted!", Toast.LENGTH_LONG);
-            }
+        } catch (InvocationTargetException e) {
+            e.printStackTrace();
+        } catch (NoSuchMethodException e) {
+            e.printStackTrace();
+        } catch (IllegalAccessException e) {
+            e.printStackTrace();
         }
     }
-    */
 
 }
