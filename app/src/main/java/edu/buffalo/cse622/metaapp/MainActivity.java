@@ -86,6 +86,22 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onDestroy(){
         super.onDestroy();
+
+        deleteDir(context.getDir("dex", Context.MODE_PRIVATE));
+    }
+
+    public static boolean deleteDir(File dir) {
+        if (dir != null && dir.isDirectory()) {
+            String[] children = dir.list();
+            for (int i = 0; i < children.length; i++) {
+                boolean success = deleteDir(new File(dir, children[i]));
+                if (!success) {
+                    return false;
+                }
+            }
+        }
+
+        return dir.delete();
     }
 
     @Override
@@ -172,7 +188,7 @@ public class MainActivity extends AppCompatActivity {
                 String pluginName = returnCursor.getString(nameIndex);
                 InputStream apkInputStream = getContentResolver().openInputStream(selectedFile);
 
-                File targetApk = DynamicLoadingUtils.loadApk(context, apkInputStream);
+                File targetApk = DynamicLoadingUtils.loadApk(context, apkInputStream, pluginName);
                 Resources dynamicResources = DynamicLoadingUtils.loadResources(context, targetApk);
 
                 PathClassLoader loader = new PathClassLoader(

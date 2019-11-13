@@ -5,6 +5,7 @@ import android.content.res.AssetManager;
 import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.util.DisplayMetrics;
+import android.util.Log;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -25,8 +26,9 @@ public class DynamicLoadingUtils {
      * @param apkInputStream
      * @return
      */
-    static File loadApk(Context context, InputStream apkInputStream) {
-        File targetApk = new File(context.getDir("dex", Context.MODE_PRIVATE), "app.apk");
+    static File loadApk(Context context, InputStream apkInputStream, String apkName) {
+        File targetApk = new File(context.getDir("dex", Context.MODE_PRIVATE), apkName);
+        Log.e("targetApk", targetApk.getAbsolutePath());
 
         if (!targetApk.exists() || !targetApk.isFile()) {
             try (BufferedInputStream bis = new BufferedInputStream(apkInputStream);
