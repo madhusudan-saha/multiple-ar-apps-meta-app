@@ -69,8 +69,6 @@ public class MainActivity extends AppCompatActivity {
         arFragment.setOnTapArPlaneListener(this::onPlaneTap);
 
         pluginMap = new HashMap<>();
-
-        //requestAppPermissions();
     }
 
     @Override
@@ -194,8 +192,8 @@ public class MainActivity extends AppCompatActivity {
                 PathClassLoader loader = new PathClassLoader(
                         targetApk.getAbsolutePath(), getClassLoader());
                 Class<?> dynamicClass = loader.loadClass("edu.buffalo.cse622.plugins.FrameOperations");
-                Constructor<?> ctor = dynamicClass.getConstructor(Context.class, Resources.class);
-                Object dynamicInstance = ctor.newInstance(context, dynamicResources);
+                Constructor<?> ctor = dynamicClass.getConstructor(Resources.class, ArFragment.class);
+                Object dynamicInstance = ctor.newInstance(dynamicResources, arFragment);
 
                 // Add the class instances to pluginMap
                 if (pluginMap.containsKey(pluginName)) {
