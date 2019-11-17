@@ -129,7 +129,7 @@ public class MainActivity extends AppCompatActivity {
             case R.id.activate_plugin_input:
                 // Creates a popup with the list of loaded plugins
                 AlertDialog.Builder builder = new AlertDialog.Builder(this);
-                builder.setTitle("Activate input for plugin:");
+                builder.setTitle("Activate input for plugin");
 
                 View viewInflated = LayoutInflater.from(context).inflate(R.layout.activate_plugin_input, (ViewGroup) findViewById(android.R.id.content), false);
                 final RadioGroup pluginsGroup = viewInflated.findViewById(R.id.pluginsGroup);
@@ -238,10 +238,7 @@ public class MainActivity extends AppCompatActivity {
             try {
                 Method processFrame = dynamicClass.getDeclaredMethod("processFrame", Frame.class);
                 processFrame.setAccessible(true);  // To invoke protected or private methods
-                AnchorNode anchorNode = (AnchorNode) processFrame.invoke(dynamicInstance, frame);
-                if (anchorNode != null) {
-                    anchorNode.setParent(arFragment.getArSceneView().getScene());
-                }
+                processFrame.invoke(dynamicInstance, frame);
             } catch (InvocationTargetException e) {
                 e.printStackTrace();
             } catch (NoSuchMethodException e) {
@@ -268,10 +265,7 @@ public class MainActivity extends AppCompatActivity {
         try {
             Method planeTap = dynamicClass.getDeclaredMethod("planeTap", HitResult.class);
             planeTap.setAccessible(true);  // To invoke protected or private methods
-            AnchorNode anchorNode = (AnchorNode) planeTap.invoke(dynamicInstance, hitResult);
-            if (anchorNode != null) {
-                anchorNode.setParent(arFragment.getArSceneView().getScene());
-            }
+            planeTap.invoke(dynamicInstance, hitResult);
         } catch (InvocationTargetException e) {
             e.printStackTrace();
         } catch (NoSuchMethodException e) {
