@@ -74,6 +74,8 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause(){
         super.onPause();
+
+        deleteDir(context.getDir("dex", Context.MODE_PRIVATE));
     }
 
     @Override
