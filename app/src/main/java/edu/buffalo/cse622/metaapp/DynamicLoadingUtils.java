@@ -20,6 +20,7 @@ import java.lang.reflect.Method;
 import dalvik.system.PathClassLoader;
 
 public class DynamicLoadingUtils {
+
     /**
      * This method loads the apk using the file's InputStream.
      *
@@ -28,7 +29,6 @@ public class DynamicLoadingUtils {
      */
     static File loadApk(Context context, InputStream apkInputStream, String apkName) {
         File targetApk = new File(context.getDir("dex", Context.MODE_PRIVATE), apkName);
-        Log.e("targetApk", targetApk.getAbsolutePath());
 
         if (!targetApk.exists() || !targetApk.isFile()) {
             try (BufferedInputStream bis = new BufferedInputStream(apkInputStream);

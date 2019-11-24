@@ -47,8 +47,8 @@ public class MainActivity extends AppCompatActivity {
 
     Context context = null;
     // Map with {Key:Value} pair as {PluginName:HashMap of class instances}.
-    // Inner map with {Key:Value} pair as {ClassName:Object array of size 2 - [Class, Object instance of class]}
-    Map<String, HashMap<String, Object[]>> pluginMap = new HashMap();
+    // Inner map with {Key:Value} pair as {ClassName:Class instance}
+    Map<String, HashMap<String, Object>> pluginMap = new HashMap<>();
     ArFragment arFragment;
     String activePlugin;
 
@@ -198,14 +198,12 @@ public class MainActivity extends AppCompatActivity {
                 Object dynamicInstance = ctor.newInstance(dynamicResources, arFragment);
 
                 // Add the class instances to pluginMap
-                if (pluginMap.containsKey(pluginName)) {
-                    HashMap<String, Object[]> instanceMap = pluginMap.get(pluginName);
-                    instanceMap.put("FrameOperations", new Object[]{dynamicClass, dynamicInstance});
+                if (!pluginMap.containsKey(pluginName)) {
+                    HashMap<String, Object> instanceMap = new HashMap<>();
+                    instanceMap.put("FrameOperations", dynamicInstance);
                     pluginMap.put(pluginName, instanceMap);
                 } else {
-                    HashMap<String, Object[]> instanceMap = new HashMap<>();
-                    instanceMap.put("FrameOperations", new Object[]{dynamicClass, dynamicInstance});
-                    pluginMap.put(pluginName, instanceMap);
+                    Toast.makeText(context, "Plugin already loaded!", Toast.LENGTH_LONG);
                 }
             } catch (InstantiationException e) {
                 e.printStackTrace();
@@ -232,10 +230,9 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Invoke processFrame() on all plugins
-        for (Map.Entry<String, HashMap<String, Object[]>> entry : pluginMap.entrySet()) {
-            Object[] instanceClassAndObject = entry.getValue().get("FrameOperations");
-            Class<?> dynamicClass = (Class<?>) instanceClassAndObject[0];
-            Object dynamicInstance = instanceClassAndObject[1];
+        for (Map.Entry<String, HashMap<String, Object>> entry : pluginMap.entrySet()) {
+            Object dynamicInstance = entry.getValue().get("FrameOperations");
+            Class<?> dynamicClass = dynamicInstance.getClass();
 
             try {
                 Method processFrame = dynamicClass.getDeclaredMethod("processFrame", Frame.class);
@@ -260,9 +257,8 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        Object[] instanceClassAndObject = pluginMap.get(activePlugin).get("FrameOperations");
-        Class<?> dynamicClass = (Class<?>) instanceClassAndObject[0];
-        Object dynamicInstance = instanceClassAndObject[1];
+        Object dynamicInstance = pluginMap.get(activePlugin).get("FrameOperations");
+        Class<?> dynamicClass = dynamicInstance.getClass();
 
         try {
             Method planeTap = dynamicClass.getDeclaredMethod("planeTap", HitResult.class);
