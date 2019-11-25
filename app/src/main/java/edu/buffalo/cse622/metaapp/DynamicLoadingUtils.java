@@ -19,7 +19,7 @@ import java.lang.reflect.Method;
 
 import dalvik.system.PathClassLoader;
 
-public class DynamicLoadingUtils {
+class DynamicLoadingUtils {
 
     /**
      * This method loads the apk using the file's InputStream.

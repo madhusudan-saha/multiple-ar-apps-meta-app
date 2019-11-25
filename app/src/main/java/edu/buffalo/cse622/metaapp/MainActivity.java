@@ -1,35 +1,27 @@
 package edu.buffalo.cse622.metaapp;
 
-import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.appcompat.widget.Toolbar;
 
 import android.content.Context;
-import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.res.Resources;
 import android.database.Cursor;
+import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
 import android.provider.OpenableColumns;
-import android.util.Log;
-import android.view.LayoutInflater;
-import android.view.Menu;
-import android.view.MenuItem;
 import android.view.MotionEvent;
 import android.view.View;
-import android.view.ViewGroup;
-import android.widget.LinearLayout;
-import android.widget.RadioButton;
-import android.widget.RadioGroup;
+import android.widget.PopupMenu;
 import android.widget.Toast;
+import android.widget.Button;
 
 import com.google.ar.core.Frame;
 import com.google.ar.core.HitResult;
 import com.google.ar.core.Plane;
-import com.google.ar.core.exceptions.CameraNotAvailableException;
 import com.google.ar.sceneform.AnchorNode;
 import com.google.ar.sceneform.FrameTime;
+import com.google.ar.sceneform.Node;
 import com.google.ar.sceneform.ux.ArFragment;
 
 import java.io.File;
@@ -38,7 +30,10 @@ import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 
 import dalvik.system.PathClassLoader;
@@ -46,20 +41,23 @@ import dalvik.system.PathClassLoader;
 public class MainActivity extends AppCompatActivity {
 
     Context context = null;
+    ArFragment arFragment;
     // Map with {Key:Value} pair as {PluginName:HashMap of class instances}.
     // Inner map with {Key:Value} pair as {ClassName:Class instance}
-    Map<String, HashMap<String, Object>> pluginMap = new HashMap<>();
-    ArFragment arFragment;
+    Map<String, HashMap<String, Object>> pluginInstanceMap;
+    Map<String, HashSet<AnchorNode>> pluginObjectsMap;
     String activePlugin;
+
+    Button clearButton, loadButton, unloadButton, enableInputButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        Toolbar mainToolbar = findViewById(R.id.main_toolbar);
-        setSupportActionBar(mainToolbar);
         context = this;
+        pluginInstanceMap = new HashMap<>();
+        pluginObjectsMap = new HashMap<>();
 
         arFragment = (ArFragment) getSupportFragmentManager().findFragmentById(R.id.ar_fragment);
 
@@ -68,7 +66,17 @@ public class MainActivity extends AppCompatActivity {
         // Add a listener to user taps.
         arFragment.setOnTapArPlaneListener(this::onPlaneTap);
 
-        pluginMap = new HashMap<>();
+        pluginInstanceMap = new HashMap<>();
+
+        clearButton = findViewById(R.id.clearButton);
+        loadButton = findViewById(R.id.loadButton);
+        unloadButton = findViewById(R.id.unloadButton);
+        enableInputButton = findViewById(R.id.enableInputButton);
+
+        clearButton.setOnClickListener(this::clear);
+        loadButton.setOnClickListener(this::load);
+        unloadButton.setOnClickListener(this::unload);
+        enableInputButton.setOnClickListener(this::enableInput);
     }
 
     @Override
@@ -105,74 +113,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     @Override
-    public boolean onCreateOptionsMenu(Menu menu) {
-        // Inflate the menu; this adds items to the action bar if it is present.
-        getMenuInflater().inflate(R.menu.main_menu, menu);
-        return true;
-    }
-
-    @Override
-    public boolean onOptionsItemSelected(MenuItem item) {
-        // Handle action bar item clicks here. The action bar will
-        // automatically handle clicks on the Home/Up button, so long
-        // as you specify a parent activity in AndroidManifest.xml.
-        int id = item.getItemId();
-
-        switch (id) {
-            case R.id.import_app:
-                Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                intent.addCategory(Intent.CATEGORY_OPENABLE);
-                intent.setType("*/*");
-
-                startActivityForResult(Intent.createChooser(intent, "Choose APK file to import"), 102);
-
-                break;
-
-            case R.id.activate_plugin_input:
-                // Creates a popup with the list of loaded plugins
-                AlertDialog.Builder builder = new AlertDialog.Builder(this);
-                builder.setTitle("Activate input for plugin");
-
-                View viewInflated = LayoutInflater.from(context).inflate(R.layout.activate_plugin_input, (ViewGroup) findViewById(android.R.id.content), false);
-                final RadioGroup pluginsGroup = viewInflated.findViewById(R.id.pluginsGroup);
-
-                for (String pluginName : pluginMap.keySet()) {
-                    RadioButton radioButton = new RadioButton(this);
-                    radioButton.setId(View.generateViewId());
-                    radioButton.setText(pluginName);
-                    pluginsGroup.addView(radioButton);
-                }
-
-                builder.setView(viewInflated);
-
-                builder.setPositiveButton("OK", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        int radioButtonID = pluginsGroup.getCheckedRadioButtonId();
-                        View radioButtonView = pluginsGroup.findViewById(radioButtonID);
-                        int selectedIndex = pluginsGroup.indexOfChild(radioButtonView);
-
-                        RadioButton radioButton = (RadioButton) pluginsGroup.getChildAt(selectedIndex);
-                        activePlugin = radioButton.getText().toString();
-                    }
-                });
-
-                builder.setNegativeButton("Cancel", new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        dialog.cancel();
-                    }
-                });
-
-                builder.show();
-
-                break;
-        }
-
-        return super.onOptionsItemSelected(item);
-    }
-
-    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
 
@@ -191,17 +131,19 @@ public class MainActivity extends AppCompatActivity {
                 File targetApk = DynamicLoadingUtils.loadApk(context, apkInputStream, pluginName);
                 Resources dynamicResources = DynamicLoadingUtils.loadResources(context, targetApk);
 
+                pluginObjectsMap.put(pluginName, new HashSet<>());
+
                 PathClassLoader loader = new PathClassLoader(
                         targetApk.getAbsolutePath(), getClassLoader());
                 Class<?> dynamicClass = loader.loadClass("edu.buffalo.cse622.plugins.FrameOperations");
-                Constructor<?> ctor = dynamicClass.getConstructor(Resources.class, ArFragment.class);
-                Object dynamicInstance = ctor.newInstance(dynamicResources, arFragment);
+                Constructor<?> ctor = dynamicClass.getConstructor(Resources.class, ArFragment.class, HashSet.class);
+                Object dynamicInstance = ctor.newInstance(dynamicResources, arFragment, pluginObjectsMap.get(pluginName));
 
-                // Add the class instances to pluginMap
-                if (!pluginMap.containsKey(pluginName)) {
+                // Add the class instances to pluginInstanceMap
+                if (!pluginInstanceMap.containsKey(pluginName)) {
                     HashMap<String, Object> instanceMap = new HashMap<>();
                     instanceMap.put("FrameOperations", dynamicInstance);
-                    pluginMap.put(pluginName, instanceMap);
+                    pluginInstanceMap.put(pluginName, instanceMap);
                 } else {
                     Toast.makeText(context, "Plugin already loaded!", Toast.LENGTH_LONG);
                 }
@@ -230,7 +172,7 @@ public class MainActivity extends AppCompatActivity {
         }
 
         // Invoke processFrame() on all plugins
-        for (Map.Entry<String, HashMap<String, Object>> entry : pluginMap.entrySet()) {
+        for (Map.Entry<String, HashMap<String, Object>> entry : pluginInstanceMap.entrySet()) {
             Object dynamicInstance = entry.getValue().get("FrameOperations");
             Class<?> dynamicClass = dynamicInstance.getClass();
 
@@ -257,7 +199,7 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        Object dynamicInstance = pluginMap.get(activePlugin).get("FrameOperations");
+        Object dynamicInstance = pluginInstanceMap.get(activePlugin).get("FrameOperations");
         Class<?> dynamicClass = dynamicInstance.getClass();
 
         try {
@@ -273,4 +215,75 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void clear(View v) {
+        List<Node> arFragmentChildren = new ArrayList<>(arFragment.getArSceneView().getScene().getChildren());
+        for (Node childNode : arFragmentChildren) {
+            if (childNode instanceof AnchorNode) {
+                if (((AnchorNode) childNode).getAnchor() != null) {
+                    arFragment.getArSceneView().getScene().removeChild(childNode);
+                    ((AnchorNode) childNode).getAnchor().detach();
+                    childNode.setParent(null);
+                }
+            }
+        }
+    }
+
+    private void load(View v) {
+        Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
+        intent.addCategory(Intent.CATEGORY_OPENABLE);
+        intent.setType("*/*");
+
+        startActivityForResult(Intent.createChooser(intent, "Choose APK file to import"), 102);
+    }
+
+    private void unload(View v) {
+        PopupMenu menu = new PopupMenu(this, v);
+
+        for (String pluginName : pluginInstanceMap.keySet()) {
+            menu.getMenu().add(pluginName);
+        }
+
+        menu.setOnMenuItemClickListener(item -> {
+            String pluginToUnload = item.getTitle().toString();
+            pluginInstanceMap.remove(pluginToUnload);
+
+            HashSet<AnchorNode> pluginObjects = pluginObjectsMap.get(pluginToUnload);
+            for (AnchorNode unloadedPluginNode : pluginObjects) {
+                arFragment.getArSceneView().getScene().removeChild(unloadedPluginNode);
+                unloadedPluginNode.getAnchor().detach();
+                unloadedPluginNode.setParent(null);
+            }
+            pluginObjectsMap.remove(pluginToUnload);
+
+            if (pluginToUnload.equals(activePlugin)) {
+                activePlugin = null;
+                enableInputButton.setText("Enable Input");
+                enableInputButton.setBackgroundColor(0x66FF0000);
+                enableInputButton.setAlpha(0.7f);
+            }
+
+            return true;
+        });
+
+        menu.show();
+    }
+
+    private void enableInput(View v) {
+        PopupMenu menu = new PopupMenu(this, v);
+
+        for (String pluginName : pluginInstanceMap.keySet()) {
+            menu.getMenu().add(pluginName);
+        }
+
+        menu.setOnMenuItemClickListener(item -> {
+            activePlugin = item.getTitle().toString();
+            enableInputButton.setText(activePlugin.replace(".apk", ""));
+            enableInputButton.setBackgroundColor(Color.GREEN);
+            enableInputButton.setAlpha(0.7f);
+
+            return true;
+        });
+
+        menu.show();
+    }
 }
