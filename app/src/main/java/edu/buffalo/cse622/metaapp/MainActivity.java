@@ -9,7 +9,9 @@ import android.database.Cursor;
 import android.graphics.Color;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Environment;
 import android.provider.OpenableColumns;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.widget.PopupMenu;
@@ -231,7 +233,9 @@ public class MainActivity extends AppCompatActivity {
     private void load(View v) {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
-        intent.setType("*/*");
+        Uri uri = Uri.parse(Environment.getExternalStorageDirectory().getPath() + "/622-PluginsDir");
+        Log.e("PartiksTag", "ENVIRONMENT PATH TEST = " + Environment.getExternalStorageDirectory().getPath());
+        intent.setDataAndType(uri, "application/vnd.android.package-archive");
 
         startActivityForResult(Intent.createChooser(intent, "Choose APK file to import"), 102);
     }
