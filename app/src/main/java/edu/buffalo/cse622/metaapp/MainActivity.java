@@ -18,9 +18,16 @@ import android.widget.PopupMenu;
 import android.widget.Toast;
 import android.widget.Button;
 
+import com.google.ar.core.AugmentedImageDatabase;
+import com.google.ar.core.Config;
 import com.google.ar.core.Frame;
 import com.google.ar.core.HitResult;
 import com.google.ar.core.Plane;
+import com.google.ar.core.Session;
+import com.google.ar.core.exceptions.UnavailableApkTooOldException;
+import com.google.ar.core.exceptions.UnavailableArcoreNotInstalledException;
+import com.google.ar.core.exceptions.UnavailableDeviceNotCompatibleException;
+import com.google.ar.core.exceptions.UnavailableSdkTooOldException;
 import com.google.ar.sceneform.AnchorNode;
 import com.google.ar.sceneform.FrameTime;
 import com.google.ar.sceneform.Node;
@@ -42,15 +49,18 @@ import dalvik.system.PathClassLoader;
 
 public class MainActivity extends AppCompatActivity {
 
-    Context context = null;
-    ArFragment arFragment;
+    private static final String TAG = "MetaApp:" + MainActivity.class.getSimpleName();
+
+    private Context context = null;
+    private ArFragment arFragment;
     // Map with {Key:Value} pair as {PluginName:HashMap of class instances}.
     // Inner map with {Key:Value} pair as {ClassName:Class instance}
-    Map<String, HashMap<String, Object>> pluginInstanceMap;
-    Map<String, HashSet<AnchorNode>> pluginObjectsMap;
-    String activePlugin;
+    private Map<String, HashMap<String, Object>> pluginInstanceMap;
+    // Map to keep track of objects belonging to plugins that can be used for cleanup later.
+    private Map<String, HashSet<AnchorNode>> pluginObjectsMap;
+    private String activePlugin;
 
-    Button clearButton, loadButton, unloadButton, enableInputButton;
+    private Button clearButton, loadButton, unloadButton, enableInputButton;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -77,26 +87,43 @@ public class MainActivity extends AppCompatActivity {
 
         clearButton.setOnClickListener(this::clear);
         loadButton.setOnClickListener(this::load);
-        unloadButton.setOnClickListener(this::unload);
+        unloadButton.setOnClickListener(this::disable);
         enableInputButton.setOnClickListener(this::enableInput);
+
+        Session session = null;
+        try {
+            session = new Session(this);
+        } catch (UnavailableArcoreNotInstalledException | UnavailableApkTooOldException |
+                UnavailableSdkTooOldException | UnavailableDeviceNotCompatibleException e) {
+            e.printStackTrace();
+        }
+
+        Config config = new Config(session);
+        config.setUpdateMode(Config.UpdateMode.LATEST_CAMERA_IMAGE);
+        config.setFocusMode(Config.FocusMode.AUTO);
+        session.configure(config);
+        arFragment.getArSceneView().setupSession(session);
+
+        config.setAugmentedImageDatabase(new AugmentedImageDatabase(session));
     }
 
     @Override
-    protected void onPause(){
+    protected void onPause() {
         super.onPause();
 
         deleteDir(context.getDir("dex", Context.MODE_PRIVATE));
     }
 
     @Override
-    protected void onResume(){
+    protected void onResume() {
         super.onResume();
     }
 
     @Override
-    protected void onDestroy(){
+    protected void onDestroy() {
         super.onDestroy();
 
+        invokePluginDestroyAll();
         deleteDir(context.getDir("dex", Context.MODE_PRIVATE));
     }
 
@@ -128,38 +155,30 @@ public class MainActivity extends AppCompatActivity {
                 returnCursor.moveToFirst();
                 int nameIndex = returnCursor.getColumnIndex(OpenableColumns.DISPLAY_NAME);
                 String pluginName = returnCursor.getString(nameIndex);
-                InputStream apkInputStream = getContentResolver().openInputStream(selectedFile);
-
-                File targetApk = DynamicLoadingUtils.loadApk(context, apkInputStream, pluginName);
-                Resources dynamicResources = DynamicLoadingUtils.loadResources(context, targetApk);
-
-                pluginObjectsMap.put(pluginName, new HashSet<>());
-
-                PathClassLoader loader = new PathClassLoader(
-                        targetApk.getAbsolutePath(), getClassLoader());
-                Class<?> dynamicClass = loader.loadClass("edu.buffalo.cse622.plugins.FrameOperations");
-                Constructor<?> ctor = dynamicClass.getConstructor(Resources.class, ArFragment.class, HashSet.class);
-                Object dynamicInstance = ctor.newInstance(dynamicResources, arFragment, pluginObjectsMap.get(pluginName));
-
-                // Add the class instances to pluginInstanceMap
                 if (!pluginInstanceMap.containsKey(pluginName)) {
+                    InputStream apkInputStream = getContentResolver().openInputStream(selectedFile);
+
+                    File targetApk = DynamicLoadingUtils.loadApk(context, apkInputStream, pluginName);
+                    Resources dynamicResources = DynamicLoadingUtils.loadResources(context, targetApk);
+
+                    pluginObjectsMap.put(pluginName, new HashSet<>());
+
+                    PathClassLoader loader = new PathClassLoader(
+                            targetApk.getAbsolutePath(), getClassLoader());
+                    Class<?> dynamicClass = loader.loadClass("edu.buffalo.cse622.plugins.FrameOperations");
+                    Constructor<?> ctor = dynamicClass.getConstructor(Resources.class, ArFragment.class, HashSet.class);
+                    Object dynamicInstance = ctor.newInstance(dynamicResources, arFragment, pluginObjectsMap.get(pluginName));
+
+                    // Add the class instances to pluginInstanceMap
                     HashMap<String, Object> instanceMap = new HashMap<>();
                     instanceMap.put("FrameOperations", dynamicInstance);
                     pluginInstanceMap.put(pluginName, instanceMap);
                 } else {
-                    Toast.makeText(context, "Plugin already loaded!", Toast.LENGTH_LONG);
+                    Log.d(TAG, "onActivityResult: " + "Plugin " + pluginName + " was already loaded.");
+                    Toast.makeText(context, "Plugin already loaded!", Toast.LENGTH_LONG).show();
                 }
-            } catch (InstantiationException e) {
-                e.printStackTrace();
-            } catch (InvocationTargetException e) {
-                e.printStackTrace();
-            } catch (NoSuchMethodException e) {
-                e.printStackTrace();
-            } catch (IllegalAccessException e) {
-                e.printStackTrace();
-            } catch (ClassNotFoundException e) {
-                e.printStackTrace();
-            } catch (FileNotFoundException e) {
+            } catch (InstantiationException | InvocationTargetException | NoSuchMethodException |
+                    IllegalAccessException | ClassNotFoundException | FileNotFoundException e) {
                 e.printStackTrace();
             }
         }
@@ -182,11 +201,7 @@ public class MainActivity extends AppCompatActivity {
                 Method processFrame = dynamicClass.getDeclaredMethod("processFrame", Frame.class);
                 processFrame.setAccessible(true);  // To invoke protected or private methods
                 processFrame.invoke(dynamicInstance, frame);
-            } catch (InvocationTargetException e) {
-                e.printStackTrace();
-            } catch (NoSuchMethodException e) {
-                e.printStackTrace();
-            } catch (IllegalAccessException e) {
+            } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
                 e.printStackTrace();
             }
 
@@ -196,6 +211,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void onPlaneTap(HitResult hitResult, Plane plane, MotionEvent motionEvent) {
         if (activePlugin == null) {
+            Log.d(TAG, "onPlaneTap: " + "Input for a plugin needs to be activated before providing user input.");
             Toast.makeText(context, "Activate input for a plugin first!", Toast.LENGTH_LONG).show();
 
             return;
@@ -208,16 +224,14 @@ public class MainActivity extends AppCompatActivity {
             Method planeTap = dynamicClass.getDeclaredMethod("planeTap", HitResult.class);
             planeTap.setAccessible(true);  // To invoke protected or private methods
             planeTap.invoke(dynamicInstance, hitResult);
-        } catch (InvocationTargetException e) {
-            e.printStackTrace();
-        } catch (NoSuchMethodException e) {
-            e.printStackTrace();
-        } catch (IllegalAccessException e) {
+        } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
             e.printStackTrace();
         }
     }
 
     private void clear(View v) {
+        invokePluginDestroyAll();
+
         List<Node> arFragmentChildren = new ArrayList<>(arFragment.getArSceneView().getScene().getChildren());
         for (Node childNode : arFragmentChildren) {
             if (childNode instanceof AnchorNode) {
@@ -228,19 +242,20 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
         }
+
+        Toast.makeText(context, "Removed all AR objects.", Toast.LENGTH_LONG).show();
     }
 
     private void load(View v) {
         Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
         intent.addCategory(Intent.CATEGORY_OPENABLE);
         Uri uri = Uri.parse(Environment.getExternalStorageDirectory().getPath() + "/622-PluginsDir");
-        Log.e("PartiksTag", "ENVIRONMENT PATH TEST = " + Environment.getExternalStorageDirectory().getPath());
         intent.setDataAndType(uri, "application/vnd.android.package-archive");
 
         startActivityForResult(Intent.createChooser(intent, "Choose APK file to import"), 102);
     }
 
-    private void unload(View v) {
+    private void disable(View v) {
         PopupMenu menu = new PopupMenu(this, v);
 
         for (String pluginName : pluginInstanceMap.keySet()) {
@@ -248,24 +263,31 @@ public class MainActivity extends AppCompatActivity {
         }
 
         menu.setOnMenuItemClickListener(item -> {
-            String pluginToUnload = item.getTitle().toString();
-            pluginInstanceMap.remove(pluginToUnload);
+            String pluginToDisable = item.getTitle().toString();
 
-            HashSet<AnchorNode> pluginObjects = pluginObjectsMap.get(pluginToUnload);
+            //Invoke onDestroy() for the disabled plugin
+            Object dynamicInstance = pluginInstanceMap.get(pluginToDisable).get("FrameOperations");
+            invokePluginDestroy(dynamicInstance);
+
+            pluginInstanceMap.remove(pluginToDisable);
+
+            HashSet<AnchorNode> pluginObjects = pluginObjectsMap.get(pluginToDisable);
             for (AnchorNode unloadedPluginNode : pluginObjects) {
                 arFragment.getArSceneView().getScene().removeChild(unloadedPluginNode);
                 unloadedPluginNode.getAnchor().detach();
                 unloadedPluginNode.setParent(null);
             }
-            pluginObjectsMap.remove(pluginToUnload);
+            pluginObjectsMap.remove(pluginToDisable);
 
-            if (pluginToUnload.equals(activePlugin)) {
+            if (pluginToDisable.equals(activePlugin)) {
                 activePlugin = null;
-                enableInputButton.setText("Enable Input");
+                enableInputButton.setText(getString(R.string.enable_input));
                 enableInputButton.setBackgroundColor(0x66FF0000);
                 enableInputButton.setAlpha(0.7f);
             }
 
+            Log.d(TAG, "disable: " + "Plugin " + pluginToDisable + " disabled (need to load again to use).");
+            Toast.makeText(context, "Plugin " + pluginToDisable + " disabled.", Toast.LENGTH_LONG).show();
             return true;
         });
 
@@ -289,5 +311,25 @@ public class MainActivity extends AppCompatActivity {
         });
 
         menu.show();
+    }
+
+    private void invokePluginDestroyAll() {
+        // Invoke onDestroy() on all plugins
+        for (Map.Entry<String, HashMap<String, Object>> entry : pluginInstanceMap.entrySet()) {
+            Object dynamicInstance = entry.getValue().get("FrameOperations");
+            invokePluginDestroy(dynamicInstance);
+        }
+    }
+
+    private void invokePluginDestroy(Object dynamicInstance) {
+        Class<?> dynamicClass = dynamicInstance.getClass();
+
+        try {
+            Method planeTap = dynamicClass.getDeclaredMethod("onDestroy");
+            planeTap.setAccessible(true);  // To invoke protected or private methods
+            planeTap.invoke(dynamicInstance);
+        } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
+            e.printStackTrace();
+        }
     }
 }

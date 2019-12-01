@@ -21,6 +21,7 @@ import dalvik.system.PathClassLoader;
 
 class DynamicLoadingUtils {
 
+    private static final String TAG = DynamicLoadingUtils.class.getSimpleName();
     /**
      * This method loads the apk using the file's InputStream.
      *
@@ -45,6 +46,7 @@ class DynamicLoadingUtils {
             }
         }
 
+        Log.d(TAG, "loadApk: " + "APK file " + apkName + " loaded.");
         return targetApk;
     }
 
@@ -93,6 +95,7 @@ class DynamicLoadingUtils {
             e.printStackTrace();
         }
 
+        Log.d(TAG, "loadResources: " + "dynamicResources initialized.");
         return dynamicResources;
     }
 }

@@ -1,3 +1,7 @@
 <resources>
     <string name="app_name">Multiple AR Apps</string>
+    <string name="clear">Clear</string>
+    <string name="load">Load</string>
+    <string name="disable">Disable</string>
+    <string name="enable_input">Enable Input</string>
 </resources>
