@@ -35,6 +35,7 @@ import com.google.ar.sceneform.ux.ArFragment;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
@@ -101,10 +102,20 @@ public class MainActivity extends AppCompatActivity {
         Config config = new Config(session);
         config.setUpdateMode(Config.UpdateMode.LATEST_CAMERA_IMAGE);
         config.setFocusMode(Config.FocusMode.AUTO);
-        session.configure(config);
-        arFragment.getArSceneView().setupSession(session);
 
-        config.setAugmentedImageDatabase(new AugmentedImageDatabase(session));
+
+        //setting up AugmentedImagesDB
+        AugmentedImageDatabase augmentedImageDatabase;
+        try{
+            InputStream is = getAssets().open("demo_img_database.imgdb");
+            augmentedImageDatabase = AugmentedImageDatabase.deserialize(session, is);
+            config.setAugmentedImageDatabase(augmentedImageDatabase);
+            session.configure(config);
+            arFragment.getArSceneView().setupSession(session);
+        } catch (IOException e) {
+            e.printStackTrace();
+            Log.e(TAG, "IO exception loading augmented image database.", e);
+        }
     }
 
     @Override

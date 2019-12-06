@@ -1,0 +1,4 @@
+who-will-cry-when-you-die|/home/partiks/622-UbuntuARAppProjects/MetaAppGit/app/src/main/assets/who-will-cry-when-you-die.jpg|0.12
+sre-book|/home/partiks/622-UbuntuARAppProjects/MetaAppGit/app/src/main/assets/sre-book.jpg|0.18
+those-we-left-behind|/home/partiks/622-UbuntuARAppProjects/MetaAppGit/app/src/main/assets/those-we-left-behind.jpg|0.14
+macbook_pro_2018_keyboard|/home/partiks/622-UbuntuARAppProjects/MetaAppGit/app/src/main/assets/macbook_pro_2018_keyboard.jpg|0.35
