@@ -19,6 +19,13 @@ import java.lang.reflect.Method;
 
 import dalvik.system.PathClassLoader;
 
+/**
+ * This class provides the methods that help initialize a Resources object to dynamically load resources from the plugins.
+ *
+ * This link is a good resource to learn how to load classes and resources dynamically:
+ * // @see <a href="https://stackoverflow.com/questions/7483568/dynamic-resource-loading-from-other-apk">Dynamically load resources (Stack Overflow link)</a>
+ */
+
 class DynamicLoadingUtils {
 
     private static final String TAG = DynamicLoadingUtils.class.getSimpleName();

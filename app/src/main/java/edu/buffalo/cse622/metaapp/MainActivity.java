@@ -46,6 +46,7 @@ import java.util.List;
 import java.util.Map;
 
 import dalvik.system.PathClassLoader;
+import edu.buffalo.cse622.plugins.Operations;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -55,8 +56,9 @@ public class MainActivity extends AppCompatActivity {
     private ArFragment arFragment;
     // Map with {Key:Value} pair as {PluginName:HashMap of class instances}.
     // Inner map with {Key:Value} pair as {ClassName:Class instance}
+    // (Inner HashMap is used in case we want to have multiple classes in the plugin in future)
     private Map<String, HashMap<String, Object>> pluginInstanceMap;
-    // Map to keep track of objects belonging to plugins that can be used for cleanup later.
+    // Map to keep track of objects belonging to plugins that can be used for cleanup or occlusion management if we want to do in the future.
     private Map<String, HashSet<AnchorNode>> pluginObjectsMap;
     private String activePlugin;
 
@@ -167,7 +169,7 @@ public class MainActivity extends AppCompatActivity {
                             targetApk.getAbsolutePath(), getClassLoader());
                     Class<?> dynamicClass = loader.loadClass("edu.buffalo.cse622.plugins.FrameOperations");
                     Constructor<?> ctor = dynamicClass.getConstructor(Resources.class, ArFragment.class, HashSet.class);
-                    Object dynamicInstance = ctor.newInstance(dynamicResources, arFragment, pluginObjectsMap.get(pluginName));
+                    Operations dynamicInstance = (Operations) ctor.newInstance(dynamicResources, arFragment, pluginObjectsMap.get(pluginName));
 
                     // Add the class instances to pluginInstanceMap
                     HashMap<String, Object> instanceMap = new HashMap<>();
@@ -194,12 +196,12 @@ public class MainActivity extends AppCompatActivity {
 
         // Invoke processFrame() on all plugins
         for (Map.Entry<String, HashMap<String, Object>> entry : pluginInstanceMap.entrySet()) {
-            Object dynamicInstance = entry.getValue().get("FrameOperations");
+            Operations dynamicInstance = (Operations) entry.getValue().get("FrameOperations");
             Class<?> dynamicClass = dynamicInstance.getClass();
 
             try {
                 Method processFrame = dynamicClass.getDeclaredMethod("processFrame", Frame.class);
-                processFrame.setAccessible(true);  // To invoke protected or private methods
+                //processFrame.setAccessible(true);  // To invoke protected or private methods
                 processFrame.invoke(dynamicInstance, frame);
             } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
                 e.printStackTrace();
@@ -217,12 +219,12 @@ public class MainActivity extends AppCompatActivity {
             return;
         }
 
-        Object dynamicInstance = pluginInstanceMap.get(activePlugin).get("FrameOperations");
+        Operations dynamicInstance = (Operations) pluginInstanceMap.get(activePlugin).get("FrameOperations");
         Class<?> dynamicClass = dynamicInstance.getClass();
-
+        Log.e(TAG, "onPlaneTap: " + dynamicInstance.getClass() + ": " + dynamicClass.getMethods());
         try {
             Method planeTap = dynamicClass.getDeclaredMethod("planeTap", HitResult.class);
-            planeTap.setAccessible(true);  // To invoke protected or private methods
+            //planeTap.setAccessible(true);  // To invoke protected or private methods
             planeTap.invoke(dynamicInstance, hitResult);
         } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
             e.printStackTrace();
@@ -266,7 +268,7 @@ public class MainActivity extends AppCompatActivity {
             String pluginToDisable = item.getTitle().toString();
 
             //Invoke onDestroy() for the disabled plugin
-            Object dynamicInstance = pluginInstanceMap.get(pluginToDisable).get("FrameOperations");
+            Operations dynamicInstance = (Operations) pluginInstanceMap.get(pluginToDisable).get("FrameOperations");
             invokePluginDestroy(dynamicInstance);
 
             pluginInstanceMap.remove(pluginToDisable);
@@ -316,17 +318,17 @@ public class MainActivity extends AppCompatActivity {
     private void invokePluginDestroyAll() {
         // Invoke onDestroy() on all plugins
         for (Map.Entry<String, HashMap<String, Object>> entry : pluginInstanceMap.entrySet()) {
-            Object dynamicInstance = entry.getValue().get("FrameOperations");
+            Operations dynamicInstance = (Operations) entry.getValue().get("FrameOperations");
             invokePluginDestroy(dynamicInstance);
         }
     }
 
-    private void invokePluginDestroy(Object dynamicInstance) {
+    private void invokePluginDestroy(Operations dynamicInstance) {
         Class<?> dynamicClass = dynamicInstance.getClass();
 
         try {
             Method planeTap = dynamicClass.getDeclaredMethod("onDestroy");
-            planeTap.setAccessible(true);  // To invoke protected or private methods
+            //planeTap.setAccessible(true);  // To invoke protected or private methods
             planeTap.invoke(dynamicInstance);
         } catch (InvocationTargetException | NoSuchMethodException | IllegalAccessException e) {
             e.printStackTrace();
